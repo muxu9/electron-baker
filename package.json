@@ -1,0 +1,37 @@
+{
+  "name": "baked-app",
+  "version": "1.0.0",
+  "description": "Electron app baked from a single HTML file",
+  "main": "main.js",
+  "author": "muxu9",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.7.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.muxu9.bakedapp",
+    "productName": "BakedApp",
+    "files": [
+      "main.js",
+      "app/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility"
+    }
+  }
+}
