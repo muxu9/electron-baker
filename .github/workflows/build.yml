@@ -6,17 +6,39 @@ on:
       - 'build/**'
 
 jobs:
+  # Reads baker.json from the pushed branch and emits a matrix containing only
+  # the platforms the user selected. Unselected platforms never get a runner.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+      count: ${{ steps.gen.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        name: Resolve selected platforms
+        run: |
+          node -e '
+            const fs = require("fs");
+            let platforms = ["mac", "win", "linux"];
+            try {
+              const cfg = JSON.parse(fs.readFileSync("baker.json", "utf8"));
+              if (Array.isArray(cfg.platforms) && cfg.platforms.length) platforms = cfg.platforms;
+            } catch (e) {}
+            const map = { mac: "macos-latest", win: "windows-latest", linux: "ubuntu-latest" };
+            const include = platforms.filter(p => map[p]).map(p => ({ os: map[p], platform: p }));
+            const out = process.env.GITHUB_OUTPUT;
+            fs.appendFileSync(out, "matrix=" + JSON.stringify({ include }) + "\n");
+            fs.appendFileSync(out, "count=" + include.length + "\n");
+            console.log("Building for:", include.map(i => i.platform).join(", ") || "(none)");
+          '
+
   build:
+    needs: setup
+    if: needs.setup.outputs.count != '0'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            platform: mac
-          - os: windows-latest
-            platform: win
-          - os: ubuntu-latest
-            platform: linux
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
