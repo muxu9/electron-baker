@@ -1,5 +1,5 @@
 {
-  "name": "baked-app",
+  "name": "linux-only-test",
   "version": "1.0.0",
   "description": "Electron app baked from a single HTML file",
   "main": "main.js",
@@ -13,8 +13,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.muxu9.bakedapp",
-    "productName": "BakedApp",
+    "appId": "com.muxu9.linuxonlytest",
+    "productName": "Linux Only Test",
     "files": [
       "main.js",
       "app/**/*",
