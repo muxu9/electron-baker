@@ -1,10 +1,566 @@
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Baked App</title>
-  </head>
-  <body>
-    <p>Placeholder. Replaced with the uploaded HTML at build time.</p>
-  </body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Red Square Adventure & Level Editor</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+
+        h1 {
+            color: #e63946; /* Red color matching player */
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        #game-wrapper {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        #game-container {
+            position: relative;
+            border: 3px solid #457b9d;
+            box-shadow: 0 0 20px rgba(70, 130, 180, 0.5);
+        }
+
+        canvas {
+            display: block;
+            background-color: #000;
+            cursor: default;
+        }
+        
+        /* --- Overlays --- */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.75);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .overlay h2 { font-size: 3em; margin-bottom: 20px; }
+        .overlay p { font-size: 1.2em; max-width: 80%; line-height: 1.5; }
+
+        .overlay button {
+            padding: 15px 30px;
+            font-size: 1.5em;
+            margin-top: 20px;
+            background-color: #e63946;
+            color: #f1faee;
+            border: 2px solid #f1faee;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .overlay button:hover { background-color: #f1faee; color: #e63946; }
+
+        #game-ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 1.5em;
+            color: #f1faee;
+            text-shadow: 1px 1px 2px #000;
+        }
+        
+        .hidden { display: none; }
+        
+        /* --- Level Editor UI --- */
+        #editor-panel {
+            background: #2a2a2a;
+            border: 3px solid #1d3557;
+            padding: 15px;
+            width: 250px;
+            color: #f1faee;
+        }
+        #editor-panel h3 { margin-top: 0; text-align: center; color: #a8dadc; }
+        #editor-panel .tool-group { margin-bottom: 15px; }
+        #editor-panel .tool-group h4 { margin-bottom: 8px; border-bottom: 1px solid #457b9d; padding-bottom: 4px; }
+        #editor-panel button {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 5px;
+            font-size: 1em;
+            background-color: #457b9d;
+            border: 1px solid #a8dadc;
+            color: #f1faee;
+            cursor: pointer;
+        }
+        #editor-panel button.selected { background-color: #e63946; font-weight: bold; }
+        #editor-panel button:hover:not(.selected) { background-color: #a8dadc; color: #1d3557; }
+        
+        #editor-panel .properties-group label { display: block; margin-top: 10px; }
+        #editor-panel .properties-group input { width: calc(100% - 10px); background: #1d3557; color: white; border: 1px solid #457b9d; padding: 4px; }
+        
+        #editor-panel textarea { width: 100%; height: 80px; margin-top: 10px; background: #1d3557; color: white; border: 1px solid #a8dadc; }
+    </style>
+</head>
+<body>
+
+    <h1>Red Square Adventure</h1>
+
+    <div id="game-wrapper">
+        <div id="game-container">
+            <canvas id="gameCanvas" width="800" height="600"></canvas>
+            <div id="game-ui" class="hidden"><span id="lives-display"></span> | <span id="level-display"></span></div>
+            <div id="start-screen" class="overlay">
+                <h2>Welcome!</h2>
+                <p>Use 'A' & 'D' to move, 'W' or 'Space' to Jump/Double Jump.<br>Reach the green goal!</p>
+                <button id="start-button">Start Game</button>
+                <button id="editor-button">Level Editor</button>
+            </div>
+            <div id="game-over-screen" class="overlay hidden">
+                <h2 style="color: #e63946;">Game Over</h2>
+                <p id="game-over-message"></p>
+                <button id="restart-button"></button>
+            </div>
+            <div id="level-complete-screen" class="overlay hidden">
+                <h2 style="color: #52b788;">Level Complete!</h2>
+                <button id="next-level-button">Next Level</button>
+            </div>
+        </div>
+
+        <div id="editor-panel" class="hidden">
+            <h3>Level Editor</h3>
+            <div class="tool-group">
+                <h4>Tools</h4><button id="tool-platform">Place Platform</button><button id="tool-eraser">Eraser</button>
+            </div>
+            <div class="tool-group">
+                <h4>Objects</h4><button id="tool-player">Place Player Start</button><button id="tool-goal">Place Goal</button><button id="tool-enemy-static">Place Static Enemy</button><button id="tool-enemy-horizontal">Place Horizontal Mover</button><button id="tool-enemy-vertical">Place Vertical Mover</button><button id="tool-enemy-circular">Place Circular Mover</button><button id="tool-enemy-homing">Place Homing Enemy</button>
+            </div>
+            <div class="tool-group properties-group hidden" id="properties-panel">
+                <h4>Tool Properties</h4><label for="prop-speed">Speed:</label><input type="number" id="prop-speed" value="2"><label for="prop-range">Range:</label><input type="number" id="prop-range" value="100">
+            </div>
+            <div class="tool-group">
+                <h4>Actions</h4><button id="test-level-button">Test Level (Esc to exit)</button><button id="save-level-button">Save to Browser</button><button id="export-level-button">Export to Text</button><textarea id="level-data-io" placeholder="Paste level data here to import..."></textarea><button id="import-level-button">Import from Text</button><button id="main-menu-button">Back to Main Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // =========================================================================
+    //  SETUP
+    // =========================================================================
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const startScreen = document.getElementById('start-screen'), gameOverScreen = document.getElementById('game-over-screen'),
+          levelCompleteScreen = document.getElementById('level-complete-screen'), gameUI = document.getElementById('game-ui'),
+          livesDisplay = document.getElementById('lives-display'), levelDisplay = document.getElementById('level-display'),
+          startButton = document.getElementById('start-button'), restartButton = document.getElementById('restart-button'),
+          nextLevelButton = document.getElementById('next-level-button');
+    const editorButton = document.getElementById('editor-button'), editorPanel = document.getElementById('editor-panel'),
+          propertiesPanel = document.getElementById('properties-panel'), levelDataIO = document.getElementById('level-data-io');
+    const toolButtons = { platform: document.getElementById('tool-platform'), eraser: document.getElementById('tool-eraser'), player: document.getElementById('tool-player'), goal: document.getElementById('tool-goal'), enemy_static: document.getElementById('tool-enemy-static'), enemy_horizontal: document.getElementById('tool-enemy-horizontal'), enemy_vertical: document.getElementById('tool-enemy-vertical'), enemy_circular: document.getElementById('tool-enemy-circular'), enemy_homing: document.getElementById('tool-enemy-homing') };
+
+    // =========================================================================
+    //  GAME CONSTANTS & STATE
+    // =========================================================================
+    const GRAVITY = 0.6, PLAYER_SPEED = 5, JUMP_FORCE = 15, DOUBLE_JUMP_FORCE = 12, FRICTION = 0.85;
+
+    let gameState = 'start';
+    let player = {}, keys = { a: false, d: false, w: false, space: false, escape: false };
+    let platforms = [], enemies = [], goal = {}; // Live game objects
+    let game = { lives: 3, currentLevel: 0, animationFrameId: null };
+    
+    // =========================================================================
+    //  PHYSICS & ENTITY LOGIC
+    // =========================================================================
+    function createPlayer(x, y) { return { x, y, width: 30, height: 30, velocityX: 0, velocityY: 0, onGround: false, canDoubleJump: false, jumpReady: true }; }
+    
+    function updatePlayer() {
+        if (keys.a) player.velocityX = -PLAYER_SPEED;
+        if (keys.d) player.velocityX = PLAYER_SPEED;
+        const jumpKeyPressed = keys.w || keys.space;
+        if (jumpKeyPressed && player.jumpReady) {
+            if (player.onGround) { player.velocityY = -JUMP_FORCE; player.onGround = false; player.canDoubleJump = true; player.jumpReady = false; }
+            else if (player.canDoubleJump) { player.velocityY = -DOUBLE_JUMP_FORCE; player.canDoubleJump = false; player.jumpReady = false; }
+        }
+        if (!jumpKeyPressed) player.jumpReady = true;
+        player.velocityX *= FRICTION;
+        player.velocityY += GRAVITY;
+        const prevX = player.x, prevY = player.y;
+        player.x += player.velocityX; player.y += player.velocityY;
+        player.onGround = false;
+        platforms.forEach(platform => {
+            if (isColliding(player, platform)) {
+                const prevPlayerBottom = prevY + player.height;
+                if (player.velocityY >= 0 && prevPlayerBottom <= platform.y) { player.y = platform.y - player.height; player.velocityY = 0; player.onGround = true; player.canDoubleJump = false; }
+                else if (player.velocityY < 0 && prevY >= platform.y + platform.height) { player.y = platform.y + platform.height; player.velocityY = 0; }
+                else {
+                    if (player.x + player.width > platform.x && prevX + player.width <= platform.x) { player.x = platform.x - player.width; player.velocityX = 0; }
+                    else if (player.x < platform.x + platform.width && prevX >= platform.x + platform.width) { player.x = platform.x + platform.width; player.velocityX = 0; }
+                }
+            }
+        });
+        if (player.x < 0) { player.x = 0; player.velocityX = 0; }
+        if (player.x + player.width > canvas.width) { player.x = canvas.width - player.width; player.velocityX = 0; }
+        if (player.y > canvas.height) { loseLife(); }
+    }
+
+    function updateEnemies() {
+        enemies.forEach(enemy => {
+            switch (enemy.type) {
+                case 'horizontal': enemy.x += enemy.speed; if (enemy.x < enemy.originX || enemy.x > enemy.originX + enemy.range) { enemy.speed *= -1; } break;
+                case 'vertical': enemy.y += enemy.speed; if (enemy.y < enemy.originY || enemy.y > enemy.originY + enemy.range) { enemy.speed *= -1; } break;
+                case 'circular': enemy.angle += enemy.speed; enemy.x = enemy.originX + Math.cos(enemy.angle) * enemy.range; enemy.y = enemy.originY + Math.sin(enemy.angle) * enemy.range; break;
+                case 'homing': const dx = player.x - enemy.x, dy = player.y - enemy.y, angle = Math.atan2(dy, dx); enemy.x += Math.cos(angle) * enemy.speed; enemy.y += Math.sin(angle) * enemy.speed; break;
+            }
+            if (isColliding(player, enemy)) { loseLife(); }
+        });
+    }
+
+    // =========================================================================
+    //  GAME FLOW & STATE MANAGEMENT
+    // =========================================================================
+    /**
+     * **THE CORE FIX**
+     * This function takes a level data "blueprint" and creates a fresh, playable
+     * instance of it, populating the global `platforms`, `enemies`, `goal`, and `player`
+     * variables. This prevents state from one playthrough from leaking into the next.
+     * @param {object} levelData The level data object to load.
+     */
+    function resetLevelState(levelData) {
+        player = createPlayer(levelData.start.x, levelData.start.y);
+        platforms = levelData.platforms.map(p => ({ ...p }));
+        goal = { ...levelData.goal };
+        
+        // CRUCIAL: Create fresh enemy instances from the blueprint,
+        // ensuring their starting positions and states are reset.
+        enemies = levelData.enemies.map(blueprint => ({
+            ...blueprint,
+            originX: blueprint.x, // The blueprint 'x' is the origin.
+            originY: blueprint.y, // The blueprint 'y' is the origin.
+            angle: 0, // Always reset angle for circular movers.
+        }));
+    }
+
+    function startGame() {
+        game.lives = 3; game.currentLevel = 0;
+        resetLevelState(levels[game.currentLevel]);
+        updateUI();
+        gameState = 'playing';
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        levelCompleteScreen.classList.add('hidden');
+        editorPanel.classList.add('hidden');
+        gameUI.classList.remove('hidden');
+        cancelAnimationFrame(game.animationFrameId);
+        gameLoop();
+    }
+    
+    function restartGame() { startGame(); }
+
+    function loseLife() {
+        // In test mode, just reset the entire level state without penalty.
+        if (gameState === 'editorTest') {
+            resetLevelState(editor.currentLevelData);
+            return;
+        }
+        if (gameState !== 'playing') return;
+        
+        game.lives--;
+        updateUI();
+        if (game.lives <= 0) {
+            gameOver();
+        } else {
+            // In a real game, reset the level state for the current level on death.
+            resetLevelState(levels[game.currentLevel]);
+        }
+    }
+    
+    function gameOver() {
+        gameState = 'gameOver';
+        cancelAnimationFrame(game.animationFrameId);
+        document.getElementById('game-over-message').innerText = "You ran out of lives!";
+        restartButton.innerText = "Try Again";
+        gameOverScreen.classList.remove('hidden');
+        gameUI.classList.add('hidden');
+    }
+
+    function levelComplete() {
+        gameState = 'levelComplete';
+        cancelAnimationFrame(game.animationFrameId);
+        if (game.currentLevel >= levels.length - 1) {
+            document.getElementById('game-over-message').innerText = "Congratulations! You beat the game!";
+            restartButton.innerText = "Play Again From Start";
+            nextLevelButton.style.display = 'none';
+            gameOverScreen.classList.remove('hidden');
+        } else {
+            levelCompleteScreen.classList.remove('hidden');
+        }
+    }
+
+    function nextLevel() {
+        game.currentLevel++;
+        resetLevelState(levels[game.currentLevel]);
+        updateUI();
+        gameState = 'playing';
+        levelCompleteScreen.classList.add('hidden');
+        gameLoop();
+    }
+    
+    // =========================================================================
+    //  MAIN GAME LOOP & DRAWING
+    // =========================================================================
+    function gameLoop() {
+        if (gameState !== 'playing' && gameState !== 'editorTest') return;
+        update();
+        draw();
+        if (gameState === 'editorTest' && keys.escape) {
+            exitTestMode();
+            return;
+        }
+        game.animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    function update() {
+        updatePlayer();
+        updateEnemies();
+        if (isColliding(player, goal)) {
+            if (gameState === 'editorTest') {
+                alert("Goal reached! Press Esc to return to editor.");
+                exitTestMode();
+            } else {
+                levelComplete();
+            }
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // The global objects (platforms, enemies, etc.) are now the single source of truth for drawing.
+        ctx.fillStyle = '#457b9d';
+        platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+        ctx.fillStyle = '#1d3557';
+        enemies.forEach(e => ctx.fillRect(e.x, e.y, e.width, e.height));
+        if (goal.x !== undefined) {
+            ctx.fillStyle = '#52b788';
+            ctx.fillRect(goal.x, goal.y, goal.width, goal.height);
+        }
+        
+        ctx.fillStyle = '#e63946';
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+    }
+
+    function drawEditorView() {
+        // This function is for drawing the editor's static view, including helper visuals.
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const data = editor.currentLevelData;
+
+        ctx.fillStyle = '#457b9d';
+        data.platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+        ctx.fillStyle = '#1d3557';
+        data.enemies.forEach(e => ctx.fillRect(e.x, e.y, e.width, e.height));
+        if (data.goal.x !== undefined) {
+            ctx.fillStyle = '#52b788';
+            ctx.fillRect(data.goal.x, data.goal.y, data.goal.width, data.goal.height);
+        }
+        ctx.fillStyle = 'rgba(230, 57, 70, 0.5)';
+        ctx.fillRect(data.start.x, data.start.y, 30, 30);
+        ctx.strokeStyle = '#e63946';
+        ctx.strokeRect(data.start.x, data.start.y, 30, 30);
+
+        if (editor.isDrawing && editor.currentTool === 'platform') {
+            ctx.fillStyle = 'rgba(69, 123, 157, 0.5)';
+            const mousePos = getMousePos(canvas, { clientX: editor.endX, clientY: editor.endY });
+            ctx.fillRect(editor.startX, editor.startY, mousePos.x - editor.startX, mousePos.y - editor.startY);
+        }
+    }
+    
+    // =========================================================================
+    //  UTILITY & UI
+    // =========================================================================
+    function isColliding(rect1, rect2) {
+        if (!rect1 || !rect2 || rect2.x === undefined) return false;
+        return rect1.x < rect2.x + rect2.width && rect1.x + rect1.width > rect2.x && rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y;
+    }
+    function updateUI() {
+        livesDisplay.textContent = `Lives: ${game.lives}`;
+        const levelName = levels[game.currentLevel]?.name || `Custom ${game.currentLevel - baseLevels.length + 1}`;
+        levelDisplay.textContent = `Level: ${levelName}`;
+    }
+
+    // =========================================================================
+    //  LEVEL EDITOR LOGIC
+    // =========================================================================
+    let editor = { currentTool: 'platform', isDrawing: false, startX: 0, startY: 0, endX: 0, endY: 0, currentLevelData: null };
+
+    function initEditor() {
+        gameState = 'editor';
+        editor.currentLevelData = { name: "New Custom Level", start: { x: 50, y: 500 }, goal: {}, platforms: [{ x: 0, y: 580, width: 800, height: 20 }], enemies: [] };
+        startScreen.classList.add('hidden');
+        editorPanel.classList.remove('hidden');
+        canvas.style.cursor = 'crosshair';
+        selectTool('platform');
+        drawEditorView();
+    }
+    
+    function selectTool(toolName) {
+        editor.currentTool = toolName;
+        Object.values(toolButtons).forEach(btn => btn.classList.remove('selected'));
+        document.getElementById(`tool-${toolName.replace('_', '-')}`).classList.add('selected');
+        const needsProperties = ['horizontal', 'vertical', 'circular', 'homing'].some(t => toolName.includes(t));
+        propertiesPanel.classList.toggle('hidden', !needsProperties);
+        const needsRange = ['horizontal', 'vertical', 'circular'].some(t => toolName.includes(t));
+        document.querySelector('label[for="prop-range"]').style.display = needsRange ? 'block' : 'none';
+        document.getElementById('prop-range').style.display = needsRange ? 'block' : 'none';
+    }
+
+    function editorHandleMouseDown(e) {
+        if (gameState !== 'editor') return;
+        const pos = getMousePos(canvas, e);
+        editor.startX = pos.x; editor.startY = pos.y;
+        editor.isDrawing = true;
+        if (editor.currentTool === 'eraser') {
+            for (let i = editor.currentLevelData.enemies.length - 1; i >= 0; i--) { if (isColliding({x: pos.x, y: pos.y, width: 1, height: 1}, editor.currentLevelData.enemies[i])) { editor.currentLevelData.enemies.splice(i, 1); drawEditorView(); return; }}
+            for (let i = editor.currentLevelData.platforms.length - 1; i >= 0; i--) { if (isColliding({x: pos.x, y: pos.y, width: 1, height: 1}, editor.currentLevelData.platforms[i])) { editor.currentLevelData.platforms.splice(i, 1); drawEditorView(); return; }}
+        } else if (editor.currentTool !== 'platform') { placeObject(pos.x, pos.y); drawEditorView(); }
+    }
+    function editorHandleMouseMove(e) {
+        if (gameState !== 'editor' || !editor.isDrawing || editor.currentTool !== 'platform') return;
+        editor.endX = e.clientX; editor.endY = e.clientY;
+        drawEditorView();
+    }
+    function editorHandleMouseUp(e) {
+        if (gameState !== 'editor' || !editor.isDrawing) return;
+        editor.isDrawing = false;
+        if (editor.currentTool === 'platform') {
+            const pos = getMousePos(canvas, e);
+            const x = Math.min(editor.startX, pos.x), y = Math.min(editor.startY, pos.y), width = Math.abs(editor.startX - pos.x), height = Math.abs(editor.startY - pos.y);
+            if (width > 5 && height > 5) { editor.currentLevelData.platforms.push({ x, y, width, height }); }
+        }
+        drawEditorView();
+    }
+    
+    function placeObject(x, y) {
+        const data = editor.currentLevelData;
+        const speed = parseFloat(document.getElementById('prop-speed').value) || 2;
+        const range = parseInt(document.getElementById('prop-range').value) || 100;
+        const newObj = { x, y }; // Start with position
+        switch (editor.currentTool) {
+            case 'player': data.start = { x, y }; return;
+            case 'goal': data.goal = { x, y, width: 40, height: 40 }; return;
+            case 'enemy_static': Object.assign(newObj, { type: 'static', width: 30, height: 30 }); break;
+            case 'enemy_horizontal': Object.assign(newObj, { type: 'horizontal', width: 30, height: 30, speed, range }); break;
+            case 'enemy_vertical': Object.assign(newObj, { type: 'vertical', width: 30, height: 30, speed, range }); break;
+            case 'enemy_circular': Object.assign(newObj, { type: 'circular', width: 25, height: 25, speed: speed / 50, range }); break;
+            case 'enemy_homing': Object.assign(newObj, { type: 'homing', width: 25, height: 25, speed }); break;
+            default: return; // Do nothing if tool is not for placing an enemy
+        }
+        data.enemies.push(newObj);
+    }
+
+    function testLevel() {
+        if (gameState !== 'editor') return;
+        gameState = 'editorTest';
+        resetLevelState(editor.currentLevelData);
+        editorPanel.classList.add('hidden');
+        gameUI.classList.remove('hidden');
+        livesDisplay.textContent = "Lives: ∞";
+        levelDisplay.textContent = "TEST MODE";
+        canvas.style.cursor = 'default';
+        cancelAnimationFrame(game.animationFrameId);
+        gameLoop();
+    }
+    
+    function exitTestMode() {
+        gameState = 'editor';
+        editorPanel.classList.remove('hidden');
+        gameUI.classList.add('hidden');
+        canvas.style.cursor = 'crosshair';
+        cancelAnimationFrame(game.animationFrameId);
+        drawEditorView();
+    }
+
+    function saveLevelToBrowser() {
+        const customLevels = JSON.parse(localStorage.getItem('redSquareCustomLevels') || '[]');
+        const levelName = prompt("Enter a name for this level:", editor.currentLevelData.name || `Custom Level ${customLevels.length + 1}`);
+        if (!levelName) return;
+        const newLevel = JSON.parse(JSON.stringify(editor.currentLevelData));
+        newLevel.name = levelName;
+        customLevels.push(newLevel);
+        localStorage.setItem('redSquareCustomLevels', JSON.stringify(customLevels));
+        alert(`Level "${levelName}" saved! It will be available next time you start the game.`);
+        loadAllLevels();
+    }
+    
+    function exportLevel() {
+        levelDataIO.value = JSON.stringify(editor.currentLevelData, null, 2);
+        levelDataIO.select();
+        alert("Level data copied to the text box. You can copy this text to save it to a file.");
+    }
+    
+    function importLevel() {
+        try {
+            const importedData = JSON.parse(levelDataIO.value);
+            if (importedData.start && importedData.platforms) {
+                editor.currentLevelData = importedData;
+                drawEditorView();
+                alert("Level imported successfully!");
+            } else { throw new Error("Invalid level data structure."); }
+        } catch (error) { alert("Import failed. Please make sure you pasted valid level data.\n" + error.message); }
+    }
+    
+    // =========================================================================
+    //  EVENT LISTENERS & INIT
+    // =========================================================================
+    function getMousePos(canvas, evt) { const rect = canvas.getBoundingClientRect(); return { x: evt.clientX - rect.left, y: evt.clientY - rect.top }; }
+    window.addEventListener('keydown', e => { if (e.key === 'a' || e.key === 'A') keys.a = true; if (e.key === 'd' || e.key === 'D') keys.d = true; if (e.key === 'w' || e.key === 'W') keys.w = true; if (e.key === ' ') { e.preventDefault(); keys.space = true; } if (e.key === 'Escape') keys.escape = true; });
+    window.addEventListener('keyup', e => { if (e.key === 'a' || e.key === 'A') keys.a = false; if (e.key === 'd' || e.key === 'D') keys.d = false; if (e.key === 'w' || e.key === 'W') keys.w = false; if (e.key === ' ') keys.space = false; if (e.key === 'Escape') keys.escape = false; });
+    startButton.addEventListener('click', startGame); restartButton.addEventListener('click', restartGame); nextLevelButton.addEventListener('click', nextLevel); editorButton.addEventListener('click', initEditor);
+    canvas.addEventListener('mousedown', editorHandleMouseDown); canvas.addEventListener('mousemove', editorHandleMouseMove); canvas.addEventListener('mouseup', editorHandleMouseUp);
+    Object.keys(toolButtons).forEach(key => toolButtons[key].addEventListener('click', () => selectTool(key)));
+    document.getElementById('test-level-button').addEventListener('click', testLevel);
+    document.getElementById('save-level-button').addEventListener('click', saveLevelToBrowser);
+    document.getElementById('export-level-button').addEventListener('click', exportLevel);
+    document.getElementById('import-level-button').addEventListener('click', importLevel);
+    document.getElementById('main-menu-button').addEventListener('click', () => location.reload());
+    
+    // =========================================================================
+    //  LEVEL DATA
+    // =========================================================================
+    let levels = [];
+    const baseLevels = [
+        { name: "1. The Basics", start: { x: 50, y: 500 }, goal: { x: 720, y: 120, width: 40, height: 40 }, platforms: [ { x: 0, y: 560, width: 250, height: 40 }, { x: 300, y: 480, width: 200, height: 30 }, { x: 550, y: 380, width: 150, height: 30 }, { x: 700, y: 160, width: 100, height: 30 }, { x: 400, y: 250, width: 100, height: 30 }, { x: 200, y: 180, width: 100, height: 30 }, ], enemies: [ { type: 'static', x: 425, y: 450, width: 30, height: 30 }, ] },
+        { name: "2. The Patrol", start: { x: 50, y: 500 }, goal: { x: 50, y: 50, width: 40, height: 40 }, platforms: [ { x: 0, y: 560, width: 800, height: 40 }, { x: 200, y: 450, width: 150, height: 30 }, { x: 450, y: 350, width: 150, height: 30 }, { x: 200, y: 250, width: 150, height: 30 }, { x: 0, y: 150, width: 150, height: 30 }, ], enemies: [ { type: 'horizontal', x: 250, y: 530, width: 30, height: 30, speed: 2, range: 200 }, { type: 'horizontal', x: 450, y: 320, width: 30, height: 30, speed: -3, range: 100 }, ] },
+        { name: "3. Up and Around", start: { x: 385, y: 500 }, goal: { x: 720, y: 50, width: 40, height: 40 }, platforms: [ { x: 350, y: 560, width: 100, height: 40 }, { x: 100, y: 450, width: 100, height: 30 }, { x: 600, y: 450, width: 100, height: 30 }, { x: 350, y: 300, width: 100, height: 30 }, { x: 100, y: 150, width: 100, height: 30 }, { x: 700, y: 90, width: 100, height: 30 }, ], enemies: [ { type: 'vertical', x: 250, y: 200, width: 30, height: 30, speed: 2, range: 200 }, { type: 'circular', x: 400, y: 150, width: 25, height: 25, speed: 0.05, range: 100 }, ] },
+        { name: "4. The Gauntlet", start: { x: 50, y: 500 }, goal: { x: 720, y: 500, width: 40, height: 40 }, platforms: [ { x: 0, y: 560, width: 150, height: 40 }, { x: 650, y: 560, width: 150, height: 40 }, { x: 350, y: 400, width: 100, height: 30 }, { x: 100, y: 250, width: 100, height: 30 }, { x: 600, y: 250, width: 100, height: 30 }, ], enemies: [ { type: 'horizontal', x: 200, y: 530, width: 40, height: 30, speed: 4, range: 400 }, { type: 'vertical', x: 400, y: 450, width: 20, height: 20, speed: -2.5, range: 150 }, { type: 'circular', x: 250, y: 150, width: 20, height: 20, speed: -0.04, range: 50 }, { type: 'circular', x: 450, y: 150, width: 20, height: 20, speed: 0.04, range: 50 }, ] },
+        { name: "5. Homing Hell", start: { x: 50, y: 50 }, goal: { x: 720, y: 520, width: 40, height: 40 }, platforms: [ { x: 0, y: 100, width: 150, height: 30 }, { x: 250, y: 200, width: 300, height: 30 }, { x: 0, y: 350, width: 150, height: 30 }, { x: 650, y: 350, width: 150, height: 30 }, { x: 0, y: 560, width: 800, height: 40 }, ], enemies: [ { type: 'homing', x: 400, y: 500, width: 25, height: 25, speed: 1.2 }, { type: 'homing', x: 750, y: 50, width: 25, height: 25, speed: 1 }, { type: 'static', x: 400, y: 170, width: 30, height: 30 }, ] },
+        { name: "6. Leap of Faith", start: { x: 50, y: 50 }, goal: { x: 720, y: 520, width: 40, height: 40 }, platforms: [ { x: 0, y: 100, width: 100, height: 20}, { x: 250, y: 250, width: 100, height: 20}, { x: 50, y: 400, width: 100, height: 20}, { x: 450, y: 450, width: 100, height: 20}, { x: 700, y: 560, width: 100, height: 40}, ], enemies: [ { type: 'vertical', x: 400, y: 300, width: 20, height: 20, speed: 3, range: 250 }, { type: 'vertical', x: 650, y: 100, width: 20, height: 20, speed: -3, range: 400 }, ] },
+        { name: "7. The Pillars", start: { x: 40, y: 520 }, goal: { x: 730, y: 50, width: 40, height: 40 }, platforms: [ { x: 0, y: 560, width: 120, height: 40}, { x: 200, y: 500, width: 60, height: 100}, { x: 350, y: 400, width: 60, height: 200}, { x: 500, y: 300, width: 60, height: 300}, { x: 650, y: 200, width: 60, height: 400}, { x: 720, y: 90, width: 80, height: 20}, ], enemies: [ { type: 'homing', x: 400, y: 50, width: 20, height: 20, speed: 1.5 } ] },
+        { name: "8. Pinball", start: { x: 385, y: 540 }, goal: { x: 385, y: 50, width: 40, height: 40 }, platforms: [ { x: 0, y: 580, width: 800, height: 20}, { x: 100, y: 450, width: 200, height: 20}, { x: 500, y: 450, width: 200, height: 20}, { x: 300, y: 300, width: 200, height: 20}, { x: 100, y: 150, width: 200, height: 20}, { x: 500, y: 150, width: 200, height: 20}, { x: 375, y: 90, width: 50, height: 20}, ], enemies: [ { type: 'circular', x: 200, y: 375, width: 20, height: 20, speed: 0.05, range: 80 }, { type: 'circular', x: 600, y: 375, width: 20, height: 20, speed: -0.05, range: 80 }, { type: 'circular', x: 400, y: 225, width: 40, height: 40, speed: 0.03, range: 250 }, ] },
+        { name: "9. The Chase", start: { x: 50, y: 540 }, goal: { x: 720, y: 50, width: 40, height: 40 }, platforms: [ { x: 0, y: 580, width: 800, height: 20}, { x: 150, y: 500, width: 100, height: 20}, { x: 300, y: 420, width: 100, height: 20}, { x: 450, y: 340, width: 100, height: 20}, { x: 600, y: 260, width: 100, height: 20}, { x: 450, y: 180, width: 100, height: 20}, { x: 300, y: 100, width: 100, height: 20}, { x: 700, y: 90, width: 100, height: 20}, ], enemies: [ { type: 'homing', x: 50, y: 50, width: 25, height: 25, speed: 2.2 }, { type: 'homing', x: 750, y: 540, width: 20, height: 20, speed: 1.8 }, ] },
+        { name: "10. Final Trial", start: { x: 20, y: 540 }, goal: { x: 740, y: 540, width: 40, height: 40 }, platforms: [ { x: 0, y: 580, width: 100, height: 20}, { x: 700, y: 580, width: 100, height: 20}, { x: 150, y: 450, width: 500, height: 20} ], enemies: [ { type: 'horizontal', x: 150, y: 420, width: 30, height: 30, speed: 5, range: 470 }, { type: 'vertical', x: 100, y: 100, width: 20, height: 20, speed: 4, range: 450}, { type: 'vertical', x: 680, y: 100, width: 20, height: 20, speed: -4, range: 450}, { type: 'circular', x: 400, y: 300, width: 30, height: 30, speed: 0.05, range: 250}, { type: 'homing', x: 400, y: 20, width: 25, height: 25, speed: 1.5 }, ] }
+    ];
+
+    function loadAllLevels() {
+        levels = [...baseLevels];
+        const customLevels = JSON.parse(localStorage.getItem('redSquareCustomLevels') || '[]');
+        levels.push(...customLevels);
+    }
+    
+    // Initial Load
+    loadAllLevels();
+    </script>
+</body>
 </html>
